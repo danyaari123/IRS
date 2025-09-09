@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dan Yaari vs The IRS</title>
+    <style>
+        html,body { margin:0; padding:0; height:100%; width:100%; }
+        body {
+            background: radial-gradient(circle at 40% 40%, #6dd5fa 30%, #232526 100%);
+            font-family: 'Segoe UI', Arial, sans-serif;
+            overflow: hidden;
+        }
+        #game-container {
+            position: relative; width: 100vw; height: 100vh;
+        }
+        #player {
+            position: absolute;
+            width: 80px; height: 80px; /* Bigger character */
+            z-index: 10;
+            transition: box-shadow 0.2s;
+            box-shadow: 0 4px 16px rgba(50,50,90,0.2);
+        }
+        .penny {
+            position: absolute;
+            width: 36px; height: 36px; /* Bigger penny */
+            background: radial-gradient(circle at 30% 30%, #ffe29b 60%, #b19440 100%);
+            border-radius: 50%;
+            border: 3px solid #b19440;
+            box-shadow: 0 3px 10px #b1944080;
+            z-index: 5;
+        }
+        .irs-agent {
+            position: absolute;
+            width: 80px; height: 80px;
+            background: #333;
+            border-radius: 50%;
+            outline: 3px solid #c02323;
+            box-shadow: 0 4px 16px #c0232380;
+            display: flex; align-items: center; justify-content: center;
+            color: #fff; font-size: 52px;
+        }
+        .irs-agent::after {
+            content: "🕴️";
+        }
+        #score-display, #timer-display {
+            position: absolute; top: 32px; font-size: 32px; z-index: 100;
+            background: rgba(30,30,70,0.6); border-radius: 14px;
+            padding: 10px 25px; font-weight: bold; color: #fff;
+        }
+        #score-display { left: 40px; }
+        #timer-display { right: 40px; }
+        #start-screen, #menu-screen, #game-over {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,30,0.85); display: flex; flex-direction: column;
+            justify-content: center; align-items: center;
+            color: white; z-index: 999;
+            transition: opacity 0.4s;
+        }
+        #game-over h1, #menu-screen h1 { font-size: 60px; text-shadow: 2px 2px 20px #000; margin-bottom: 26px; }
+        #menu-screen h1 { font-size: 56px; }
+        .panel { background: rgba(25,35,45,0.7); border-radius: 15px; padding: 21px 38px; margin-bottom: 20px; font-size: 26px; }
+        #start-button, #back-to-menu {
+            margin-top: 34px; padding: 18px 44px; font-size: 32px; background: #6bffdc;
+            border: none; border-radius: 12px; color: #222; font-weight: bold; cursor: pointer;
+            box-shadow: 0 6px 24px #2223;
+            transition: background 0.3s;
+        }
+        #start-button:hover, #back-to-menu:hover { background: #49c7a7;}
+        /* Hide screens by default */
+        #start-screen, #game-over, #menu-screen { display: none; }
+        @media (max-width:600px) {
+            #player, .irs-agent { width:56px; height:56px; }
+            .penny { width:26px; height:26px; }
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <div id="menu-screen">
+            <h1>Dan Yaari vs The IRS</h1>
+            <p class="panel">Collect as many pennies as you can. Avoid IRS agents chasing you.<br>
+            Controls: Arrow keys or WASD.<br>Game gets harder as you play!</p>
+            <button id="start-button">Start Game</button>
+        </div>
+        <div id="player"></div>
+        <div id="score-display">Pennies: 0</div>
+        <div id="timer-display">Time: 60</div>
+        <div id="game-over">
+            <h1>Game Over!</h1>
+            <p id="final-score" class="panel"></p>
+            <button id="back-to-menu">Back to Menu</button>
+        </div>
+    </div>
+    <script>
+        // Cartoon SVG for player (Dan Yaari)
+        const player = document.getElementById('player');
+        player.innerHTML = `<svg viewBox="0 0 80 80">
+            <ellipse cx="40" cy="46" rx="32" ry="36" fill="#ffdfbd" stroke="#222" stroke-width="3"/>
+            <ellipse cx="41" cy="32" rx="23" ry="16" fill="#795d3b" stroke="#222" stroke-width="3"/>
+            <ellipse cx="40" cy="36" rx="26" ry="14" fill="none" stroke="#754f23" stroke-width="3"/>
+            <ellipse cx="29" cy="55" rx="3.5" ry="4" fill="#222"/>
+            <ellipse cx="51" cy="55" rx="3.5" ry="4" fill="#222"/>
+            <path d="M33 65 Q40 71 47 65" stroke="#222" stroke-width="3" fill="none"/>
+        </svg>`;
+
+        // Game Variables
+        const gameContainer = document.getElementById('game-container'),
+              scoreDisplay = document.getElementById('score-display'),
+              timerDisplay = document.getElementById('timer-display'),
+              gameOverScreen = document.getElementById('game-over'),
+              finalScoreDisplay = document.getElementById('final-score'),
+              menuScreen = document.getElementById('menu-screen'),
+              startButton = document.getElementById('start-button'),
+              backToMenu = document.getElementById('back-to-menu');
+
+        let score = 0,
+            timeLeft = 60,
+            gameActive = false,
+            playerX = window.innerWidth / 2,
+            playerY = window.innerHeight / 2,
+            keys = {},
+            pennies = [],
+            irsAgents = [],
+            difficultyTimer = 0,
+            difficultyLevel = 0,
+            gameLoopId = null,
+            timerInterval = null;
+
+        function showMenu() {
+            menuScreen.style.display = 'flex';
+            gameOverScreen.style.display = 'none';
+            player.style.display = 'none';
+            scoreDisplay.style.display = 'none';
+            timerDisplay.style.display = 'none';
+        }
+
+        function showGame() {
+            menuScreen.style.display = 'none';
+            gameOverScreen.style.display = 'none';
+            player.style.display = 'block';
+            scoreDisplay.style.display = 'block';
+            timerDisplay.style.display = 'block';
+        }
+
+        function showGameOver() {
+            menuScreen.style.display = 'none';
+            gameOverScreen.style.display = 'flex';
+            player.style.display = 'none';
+            scoreDisplay.style.display = 'none';
+            timerDisplay.style.display = 'none';
+        }
+
+        startButton.onclick = () => startGame();
+        backToMenu.onclick = () => {
+            endGame(true);
+            showMenu();
+        };
+
+        // Enable keyboard events
+        window.addEventListener('keydown', e => keys[e.key] = true);
+        window.addEventListener('keyup', e => keys[e.key] = false);
+
+        function startGame() {
+            score = 0; timeLeft = 60; gameActive = true;
+            playerX = window.innerWidth / 2; playerY = window.innerHeight / 2;
+            player.style.left = `${playerX}px`; player.style.top = `${playerY}px`;
+            pennies.forEach(p => p.remove()); irsAgents.forEach(a => a.element.remove());
+            pennies = []; irsAgents = [];
+            difficultyLevel = 0; difficultyTimer = 0;
+            createPennies(16);
+            createIRSAgents(2); // start with 2 IRS agents!
+            showGame();
+            cancelAnimationFrame(gameLoopId);
+            clearInterval(timerInterval);
+            gameLoopId = requestAnimationFrame(gameLoop);
+            timerInterval = setInterval(updateTimer, 1000);
+        }
+
+        function gameLoop() {
+            if(!gameActive) return;
+            // Smoother movement with interpolation
+            let targetX = playerX, targetY = playerY;
+            const moveSpeed = Math.max(6, 5 + difficultyLevel * 1.1);
+            if (keys['ArrowUp'] || keys['w']) targetY -= moveSpeed;
+            if (keys['ArrowDown'] || keys['s']) targetY += moveSpeed;
+            if (keys['ArrowLeft'] || keys['a']) targetX -= moveSpeed;
+            if (keys['ArrowRight'] || keys['d']) targetX += moveSpeed;
+            // Clamp values to window size and center player
+            const w = player.offsetWidth, h = player.offsetHeight;
+            playerX = Math.max(0, Math.min(window.innerWidth - w, targetX));
+            playerY = Math.max(0, Math.min(window.innerHeight - h, targetY));
+            player.style.left = `${playerX}px`;
+            player.style.top = `${playerY}px`;
+            moveIRSAgents();
+            checkPennyCollisions();
+            checkAgentCollisions();
+            // Penny spawn frequency decreases as it gets harder
+            if (Math.random() < Math.max(0.017 - (difficultyLevel * 0.002), 0.005)) createPennies(1);
+            // Gradually increase difficulty by adding more/faster agents
+            difficultyTimer++;
+            if (difficultyTimer % 625 === 0) { // ~10s per increment
+                difficultyLevel++;
+                createIRSAgents(1);
+            }
+            gameLoopId = requestAnimationFrame(gameLoop);
+        }
+
+        function createPennies(count) {
+            for (let i = 0; i < count; i++) {
+                const penny = document.createElement('div');
+                penny.className = 'penny';
+                penny.style.left = `${Math.random() * (window.innerWidth - penny.offsetWidth)}px`;
+                penny.style.top = `${Math.random() * (window.innerHeight - penny.offsetHeight)}px`;
+                gameContainer.appendChild(penny);
+                pennies.push(penny);
+            }
+        }
+
+        function createIRSAgents(count) {
+            for (let i = 0; i < count; i++) {
+                const agent = document.createElement('div');
+                agent.className = 'irs-agent';
+                agent.style.left = `${Math.random() * (window.innerWidth - agent.offsetWidth)}px`;
+                agent.style.top = `${Math.random() * (window.innerHeight - agent.offsetHeight)}px`;
+                gameContainer.appendChild(agent);
+                irsAgents.push({
+                    element: agent,
+                    x: parseFloat(agent.style.left),
+                    y: parseFloat(agent.style.top),
+                    speed: 4.5 + difficultyLevel * 1.2 + Math.random() * 1.7 // MUCH FASTER
+                });
+            }
+        }
+
+
+        function moveIRSAgents() {
+            const w = player.offsetWidth, h = player.offsetHeight;
+            irsAgents.forEach(agent => {
+                const dx = playerX - agent.x, dy = playerY - agent.y;
+                const dist = Math.sqrt(dx*dx + dy*dy) || 1;
+                agent.x += (dx/dist) * agent.speed;
+                agent.y += (dy/dist) * agent.speed;
+                agent.element.style.left = `${agent.x}px`;
+                agent.element.style.top = `${agent.y}px`;
+            });
+        }
+
+        function checkPennyCollisions() {
+            const playerRect = player.getBoundingClientRect();
+            for (let i = pennies.length - 1; i >= 0; i--) {
+                const penny = pennies[i], pennyRect = penny.getBoundingClientRect();
+                if (playerRect.left < pennyRect.right &&
+                    playerRect.right > pennyRect.left &&
+                    playerRect.top < pennyRect.bottom &&
+                    playerRect.bottom > pennyRect.top) {
+                    penny.remove();
+                    pennies.splice(i, 1);
+                    score++; scoreDisplay.textContent = `Pennies: ${score}`;
+                }
+            }
+        }
+        function checkAgentCollisions() {
+            const playerRect = player.getBoundingClientRect();
+            for (let agent of irsAgents) {
+                const agentRect = agent.element.getBoundingClientRect();
+                if (playerRect.left < agentRect.right &&
+                    playerRect.right > agentRect.left &&
+                    playerRect.top < agentRect.bottom &&
+                    playerRect.bottom > agentRect.top) {
+                    endGame(false);
+                    break;
+                }
+            }
+        }
+        function updateTimer() {
+            timeLeft--;
+            timerDisplay.textContent = `Time: ${timeLeft}`;
+            if (timeLeft <= 0) endGame(false);
+        }
+        function endGame(toMenu) {
+            gameActive = false;
+            cancelAnimationFrame(gameLoopId);
+            clearInterval(timerInterval);
+            finalScoreDisplay.textContent = `You collected ${score} pennies`;
+            if (!toMenu) showGameOver();
+        }
+        // Responsive element resizing
+        window.addEventListener('resize', () => {
+            if (gameActive) {
+                playerX = Math.max(0, Math.min(window.innerWidth - player.offsetWidth, playerX));
+                playerY = Math.max(0, Math.min(window.innerHeight - player.offsetHeight, playerY));
+                player.style.left = `${playerX}px`; player.style.top = `${playerY}px`;
+            }
+        });
+
+        // Show menu on initial load
+        showMenu();
+
+    </script>
+</body>
+</html>
