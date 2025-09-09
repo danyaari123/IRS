@@ -57,6 +57,12 @@
             color: white; z-index: 999;
             transition: opacity 0.4s;
         }
+        @media (orientation: landscape) {
+            #game-container { width: 100vw; height: 100vh; }
+            #player, .irs-agent { width:9vw; height:9vw; min-width:56px; min-height:56px; }
+            .penny { width:4vw; height:4vw; min-width:25px; min-height:25px; }
+        }
+
         #game-over h1, #menu-screen h1 { font-size: 60px; text-shadow: 2px 2px 20px #000; margin-bottom: 26px; }
         #menu-screen h1 { font-size: 56px; }
         .panel { background: rgba(25,35,45,0.7); border-radius: 15px; padding: 21px 38px; margin-bottom: 20px; font-size: 26px; }
@@ -285,6 +291,33 @@
             finalScoreDisplay.textContent = `You collected ${score} pennies`;
             if (!toMenu) showGameOver();
         }
+        let lastTouch = {x: null, y: null};
+        window.addEventListener('touchstart', (e) => {
+            if(e.touches.length==1){
+                lastTouch.x = e.touches.clientX;
+                lastTouch.y = e.touches.clientY;
+            }
+        });
+        window.addEventListener('touchmove', (e) => {
+            if(e.touches.length==1 && lastTouch.x !== null){
+                let dx = e.touches.clientX - lastTouch.x;
+                let dy = e.touches.clientY - lastTouch.y;
+                if(Math.abs(dx) > Math.abs(dy)){
+                    if(dx > 20) keys['ArrowRight']=true;
+                    else if(dx < -20) keys['ArrowLeft']=true;
+                }else{
+                    if(dy > 20) keys['ArrowDown']=true;
+                    else if(dy < -20) keys['ArrowUp']=true;
+                }
+                lastTouch.x = e.touches.clientX; lastTouch.y = e.touches.clientY;
+            }
+                });
+                window.addEventListener('touchend', () => {
+                    keys['ArrowUp']=false; keys['ArrowDown']=false;
+                    keys['ArrowLeft']=false; keys['ArrowRight']=false;
+                    lastTouch.x=null; lastTouch.y=null;
+                });
+    
         // Responsive element resizing
         window.addEventListener('resize', () => {
             if (gameActive) {
